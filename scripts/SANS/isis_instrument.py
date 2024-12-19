@@ -435,7 +435,7 @@ class DetectorBank(object):
 class ISISInstrument(BaseInstrument):
     lowAngDetSet = None
 
-    def __init__(self, filename=None, m4_instrument_component_name=None):
+    def __init__(self, filename=None, backstop_instrument_component_name=None):
         """
         Reads the instrument definition xml file
         @param filename: the name of the instrument definition file to read
@@ -487,25 +487,6 @@ class ISISInstrument(BaseInstrument):
         # the sample will be moved this distance a long the beam axis
         self.SAMPLE_Z_CORR = 0
 
-        # Detector position information for SANS2D
-        # why are these not defined in SANS2D
-        self.FRONT_DET_RADIUS = 306.0
-        self.FRONT_DET_DEFAULT_SD_M = 4.0
-        self.FRONT_DET_DEFAULT_X_M = 1.1
-        self.REAR_DET_DEFAULT_SD_M = 4.0
-
-        # LOG files for SANS2D will have these encoder readings
-        # why are these not defined in SANS2D
-        self.FRONT_DET_X = 0.0
-        self.FRONT_DET_Z = 0.0
-        self.FRONT_DET_ROT = 0.0
-        self.REAR_DET_Z = 0.0
-        self.REAR_DET_X = 0
-
-        # LOG files for Larmor will have these encoder readings
-        # why are these not defined in Larmor
-        self.BENCH_ROT = 0.0
-
         # spectrum number of the monitor used to as the incidient in the transmission calculations
         self.default_trans_spec = int(self.definition.getNumberParameter("default-transmission-monitor-spectrum")[0])
         self.incid_mon_4_trans_calc = self._incid_monitor
@@ -514,8 +495,8 @@ class ISISInstrument(BaseInstrument):
         # Number of digits in standard file name
         self.run_number_width = isis.instrument(self._NAME).zeroPadding(0)
 
-        # Set a flag if the instrument has an M4 monitor or not
-        self.has_m4_monitor = self._has_m4_monitor_in_idf(m4_instrument_component_name)
+        # Set a flag if the instrument has an beamstop or not
+        self.has_backstop_monitor = self._has_backstop_monitor_in_idf(backstop_instrument_component_name)
 
         # this variable isn't used again and stops the instrument from being deep copied if this instance is deep copied
         self.definition = None
@@ -887,20 +868,20 @@ class ISISInstrument(BaseInstrument):
             Value=str(value[0]),
         )
 
-    def get_m4_monitor_det_ID(self):
+    def get_backstop_monitor_det_ID(self):
         """
-        Gets the detecor ID associated with Monitor 4
-        @returns: the det ID of Monitor 4
+        Gets the detecor ID associated with Beamstop Monitor 
+        @returns: the det ID of the Beamstop Monitor
         """
-        raise RuntimeError("Monitor 4 does not seem to be implemented.")
+        raise RuntimeError("Beamstop Monitor does not seem to be implemented.")
 
-    def _has_m4_monitor_in_idf(self, m4_name):
+    def _has_backstop_monitor_in_idf(self, backstop_name):
         """
-        Checks if the instrument contains a component with the M4 name
-        @param m4_name: the name of the M4 component
-        @returns true if it has an M4 component, else false
+        Checks if the instrument contains a component with the beamstop name
+        @param backstop_name: the name of the beamstop component
+        @returns true if it has an beamstop component, else false
         """
-        return False if self.definition.getComponentByName(m4_name) is None else True
+        return False if self.definition.getComponentByName(backstop_name) is None else True
 
 
 class LOQ(ISISInstrument):
@@ -920,17 +901,17 @@ class LOQ(ISISInstrument):
         @param idf_path: the idf file
         @raise IndexError: if any parameters (e.g. 'default-incident-monitor-spectrum') aren't in the xml definition
         """
-        # The det id for the M4 monitor in LOQ
-        self._m4_det_id = 17788
-        self._m4_monitor_name = "monitor4"
-        super(LOQ, self).__init__(idf_path, self._m4_monitor_name)
+        # The det id for the beamstop monitor in LOQ
+        self._backstop_det_id = 17788
+        self._backstop_monitor_name = "monitor4"
+        super(LOQ, self).__init__(idf_path, self._backstop_monitor_name)
         # relates the numbers of the monitors to their names in the instrument definition file
         self.monitor_names = {1: "monitor1", 2: "monitor2"}
 
-        if self.has_m4_monitor:
-            self.monitor_names.update({self._m4_det_id: self._m4_monitor_name})
-        elif self._m4_det_id in list(self.monitor_names.keys()):
-            del self.monitor_names[self._m4_det_id]
+        if self.has_backstop_monitor:
+            self.monitor_names.update({self._backstop_det_id: self._backstop_monitor_name})
+        elif self._backstop_det_id in list(self.monitor_names.keys()):
+            del self.monitor_names[self._backstop_det_id]
 
     def on_load_sample(self, ws_name, beamcentre, isSample, other_centre=None):
         """It will be called just after loading the workspace for sample and can
@@ -1057,8 +1038,8 @@ class LOQ(ISISInstrument):
         """
         ws = mtd[ws_trans]
         instrument = ws.getInstrument()
-        has_m4 = instrument.getComponentByName(self._m4_monitor_name)
-        if has_m4 is None:
+        has_backstop = instrument.getComponentByName(self._backstop_monitor_name)
+        if has_backstop is None:
             trans_definition_file = os.path.join(config.getString("instrumentDefinition.directory"), self._NAME + "_trans_Definition.xml")
         else:
             trans_definition_file = os.path.join(
@@ -1074,8 +1055,8 @@ class LOQ(ISISInstrument):
         cent_pos = 317.5 / 1000.0
         return [cent_pos - pos.getX(), cent_pos - pos.getY()]
 
-    def get_m4_monitor_det_ID(self):
-        return self._m4_det_id
+    def get_backstop_monitor_det_ID(self):
+        return self._backstop_det_id
 
 
 class SANS2D(ISISInstrument):
@@ -1089,20 +1070,33 @@ class SANS2D(ISISInstrument):
     WAV_RANGE_MAX = 14.0
 
     def __init__(self, idf_path=None):
-        # The detector ID for the M4 monitor
-        self._m4_det_id = 4
-        self._m4_monitor_name = "monitor4"
-        super(SANS2D, self).__init__(idf_path, self._m4_monitor_name)
+        # The detector ID for the backstop monitor
+        self._backstop_det_id = 4
+        self._backstop_monitor_name = "monitor4"
+        super(SANS2D, self).__init__(idf_path, self._backstop_monitor_name)
 
         self._marked_dets = []
         # set to true once the detector positions have been moved to the locations given in the sample logs
         self.corrections_applied = False
         # a warning is issued if the can logs are not the same as the sample
         self._can_logs = {}
-        # The user can set the distance between monitor 4 and the rear detector in millimetres, should be negative
-        self.monitor_4_offset = None
+        # The user can set the distance between beamstop and the rear detector in millimetres, should be negative
+        self.monitor_backstop_offset = None
         # relates the numbers of the monitors to their names in the instrument definition file
-        self.monitor_names = {1: "monitor1", 2: "monitor2", 3: "monitor3", self._m4_det_id: self._m4_monitor_name}
+        self.monitor_names = {1: "monitor1", 2: "monitor2", 3: "monitor3", self._backstop_det_id: self._backstop_monitor_name}
+
+        # Detector position information for SANS2D
+        self.FRONT_DET_RADIUS = 306.0
+        self.FRONT_DET_DEFAULT_SD_M = 4.0
+        self.FRONT_DET_DEFAULT_X_M = 1.1
+        self.REAR_DET_DEFAULT_SD_M = 4.0
+
+        # LOG files for SANS2D will have these encoder readings
+        self.FRONT_DET_X = 0.0
+        self.FRONT_DET_Z = 0.0
+        self.FRONT_DET_ROT = 0.0
+        self.REAR_DET_Z = 0.0
+        self.REAR_DET_X = 0
 
     def set_up_for_run(self, base_runno):
         """
@@ -1262,7 +1256,7 @@ class SANS2D(ISISInstrument):
 
         self.move_all_components(ws)
         # this implements the TRANS/TRANSPEC=4/SHIFT=... line, this overrides any other monitor move
-        if self.monitor_4_offset:
+        if self.monitor_backstop_offset:
             # get the current location of the monitor
             component = "monitor4"
             ws = mtd[str(ws)]
@@ -1273,8 +1267,8 @@ class SANS2D(ISISInstrument):
             det = ws.getInstrument().getComponentByName(self.cur_detector().name())
             det_z = det.getPos().getZ()
 
-            monitor_4_offset = self.monitor_4_offset / 1000.0
-            z_new = det_z + monitor_4_offset
+            monitor_backstop_offset = self.monitor_backstop_offset / 1000.0
+            z_new = det_z + monitor_backstop_offset
             z_move = z_new - z_orig
             MoveInstrumentComponent(Workspace=ws, ComponentName=component, Z=z_move, RelativePosition=True)
             sanslog.notice("Monitor 4 is at z = " + str(z_new))
@@ -1484,8 +1478,8 @@ class SANS2D(ISISInstrument):
 
         ISISInstrument.on_load_sample(self, ws_name, beamcentre, isSample)
 
-    def get_m4_monitor_det_ID(self):
-        return self._m4_det_id
+    def get_backstop_monitor_det_ID(self):
+        return self._backstop_det_id
 
 
 class LARMOR(ISISInstrument):
@@ -1494,7 +1488,7 @@ class LARMOR(ISISInstrument):
     WAV_RANGE_MAX = 13.5
 
     def __init__(self, idf_path=None):
-        # The detector ID for the M4 monitor
+        # The detector ID for the Transmission monitor 4
         self._m4_det_id = 4
         self._m4_monitor_name = "monitor4"
         super(LARMOR, self).__init__(idf_path, self._m4_monitor_name)
@@ -1503,6 +1497,10 @@ class LARMOR(ISISInstrument):
         self.corrections_applied = False
         # a warning is issued if the can logs are not the same as the sample
         self._can_logs = {}
+        
+
+        # LOG files for Larmor will have these encoder readings
+        self.BENCH_ROT = 0.0
 
         self.monitor_names = dict()
 
@@ -1870,7 +1868,251 @@ class LARMOR(ISISInstrument):
 
     def get_m4_monitor_det_ID(self):
         return self._m4_det_id
+    
+# Create instrument class for ZOOM 
+class ZOOM(ISISInstrument):
+    _NAME = "ZOOM"
+    WAV_RANGE_MIN = 1.75
+    WAV_RANGE_MAX = 16.5
 
+    def __init__(self, idf_path=None):
+        # The detector ID for the M4 transmission monitor inside the tank, moving with tank
+        self._m4_det_id = 4
+        self._m4_monitor_name = "monitor4"
+        # The detector ID for the M5 beamstop monitor
+        self._backstop_det_id = 5
+        self._backstop_monitor_name = "monitor5"
+        super(ZOOM, self).__init__(idf_path, self._backstop_monitor_name)
+        self._marked_dets = []
+        # set to true once the detector positions have been moved to the locations given in the sample logs
+        self.corrections_applied = False
+        # a warning is issued if the can logs are not the same as the sample
+        self._can_logs = {}
+        # The user can set the distance between beamstop monitor 5 and the rear detector in millimetres, should be negative
+        self.monitor_backstop_offset = None
+        # Detector position information for ZOOM
+        self.REAR_DET_DEFAULT_SD_M = 4.0
+        # Detector offset for standard sample changer position
+        self.REAR_DET_DEFAULT_Z_OFFSET = 0.5
+
+        # LOG files for ZOOM will have these encoder readings
+        self.REAR_DET_Z = 0.0
+        self.monitor_names = dict()
+
+        for i in range(1, 6):
+            self.monitor_names[i] = "monitor" + str(i)
+
+    def cur_detector_position(self, ws_name):
+        """Return the position of the center of the detector bank"""
+        ws = mtd[ws_name]
+        pos = ws.getInstrument().getComponentByName(self.cur_detector().name()).getPos()
+
+        return [-pos.getX(), -pos.getY()]
+    
+    def getDetValues(self, ws_name):
+        """
+        Retrieve the values of Rear_Det_Z from
+        the workspace. If it does not find the value at the run info, it takes as default value the
+        self.Rear_Det_Z, self... which are extracted from the sample workspace at apply_detector_log.
+
+        This is done to allow the function move_components to use the correct values and not to use
+        all the values for TRANS ans SAMPLE the same, as sometimes, this assumption is not valid.
+
+        The reason for this method is explained at the ticket http://trac.mantidproject.org/mantid/ticket/7314.
+        """
+        # set the default value for these variables
+        values = [self.REAR_DET_Z]
+        # get these variables from the workspace run
+        run_info = mtd[str(ws_name)].run()
+        ind = 0
+        for name in ("Rear_Det_Z"):
+            try:
+                var = run_info.get(name).value
+                if hasattr(var, "__iter__"):
+                    var = var[-1]
+                values[ind] = float(var)
+            except:
+                pass  # ignore, because we do have a default value
+            ind += 1
+        # return these variables
+        return tuple(values)           
+
+
+
+    def move_components(self, ws, xbeam, ybeam):
+        """
+        Move the locations of the sample and detector bank based on the passed beam center
+        and information from the sample workspace logs. If the location of the monitor was
+        set with TRANS/TRANSPEC=4/SHIFT=... this function does the move instrument
+        @param ws: workspace containing the instrument information
+        @param xbeam: x-position of the beam in meters
+        @param ybeam: y-position of the beam in meters
+        @return: the locations of (in the new coordinates) beam center, center of detector bank
+        """
+        rearDet = self.getDetector("rear")
+
+        REAR_DET_Z = self.getDetValues(ws)
+
+        # Inclination of rear detector
+        # The beam on ZOOM points 0.7 Degrees upwards and shlightly to the right, as the instrument sits on an upwardpointing bender.
+        # Like on SANS2D, ZOOM likely need to add tilt of detector, in degrees, with respect to the horizontal or vertical of the detector plane
+        # this time we can rotate about the detector's own axis so can use RotateInstrumentComponent,
+        # ytilt rotates about x axis, xtilt rotates about z axis. This will account for inclined beam path falling onto detector
+  
+        # 10/03/15 RKH need to add tilt of detector, in degrees, with respect to the horizontal or vertical of the detector plane
+        # Best to do the tilts first, while the detector is still centred on the z axis,
+        # ytilt rotates about x axis, xtilt rotates about z axis
+        # NOTE the beam centre coordinates may change
+        if rearDet.y_tilt != 0.0:
+            RotateInstrumentComponent(Workspace=ws, ComponentName=rearDet.name(), X="1.", Y="0.", Z="0.", Angle=rearDet.y_tilt)
+        if rearDet.x_tilt != 0.0:
+            RotateInstrumentComponent(Workspace=ws, ComponentName=rearDet.name(), X="0.", Y="0.", Z="1.", Angle=rearDet.x_tilt)
+
+        xshift = -xbeam
+        yshift = -ybeam
+        zshift = (REAR_DET_Z + rearDet.z_corr - self.REAR_DET_DEFAULT_Z_OFFSET) / 1000.0
+        zshift -= self.REAR_DET_DEFAULT_SD_M
+        sanslog.notice("Setup move " + str(xshift * 1000.0) + " " + str(yshift * 1000.0) + " " + str(zshift * 1000.0))
+        MoveInstrumentComponent(Workspace=ws, ComponentName=rearDet.name(), X=xshift, Y=yshift, Z=zshift, RelativePosition="1")
+
+        # get the current location of the transmission monitor
+        component = "monitor4"
+        ws = mtd[str(ws)]
+        mon = ws.getInstrument().getComponentByName(component)
+        mon_z = mon.getPos().getZ()
+        #move with tank, standard offset 0.5m applies for positions in IDF
+        mon_z = (mon_z + rearDet.z_corr - self.REAR_DET_DEFAULT_Z_OFFSET) / 1000.0
+
+        MoveInstrumentComponent(Workspace=ws, ComponentName=component, Z=mon_z, RelativePosition=True)
+        sanslog.notice("Monitor 4 is at z = " + str(z_new))
+
+
+        self.move_all_components(ws)
+        if self.monitor_backstop_offset:
+            # get the current location of the monitor
+            component = "monitor5"
+            ws = mtd[str(ws)]
+            mon = ws.getInstrument().getComponentByName(component)
+            z_orig = mon.getPos().getZ()
+
+            # the location is relative to the rear-detector, get its location
+            det = ws.getInstrument().getComponentByName(self.cur_detector().name())
+            det_z = det.getPos().getZ()
+
+            monitor_backstop_offset = self.monitor_backstop_offset / 1000.0
+            z_new = det_z + monitor_backstop_offset
+            z_move = z_new - z_orig
+            MoveInstrumentComponent(Workspace=ws, ComponentName=component, Z=z_move, RelativePosition=True)
+            sanslog.notice("Monitor 5 is at z = " + str(z_new))
+
+        # Are these returned values used anywhere?
+        if self.cur_detector().name() == "front-detector":
+            beam_cen = [0.0, 0.0]
+            det_cen = [0.0, 0.0]
+        else:
+            beam_cen = [0.0, 0.0]
+            det_cen = [-xbeam, -ybeam]
+
+        # Set the beam centre position afte the move, leave as they were
+        self.beam_centre_pos1_after_move = xbeam
+        self.beam_centre_pos2_after_move = ybeam
+
+        return beam_cen, det_cen
+
+    def get_m4_monitor_det_ID(self):
+        return self._m4_det_id 
+
+    def get_backstop_monitor_det_ID(self):
+        return self._backstop_det_id    
+    
+
+    def get_detector_log(self, wksp):
+        """
+        Reads information about the state of the instrument on the information
+        stored in the sample
+        @param logs: a workspace pointer
+        @return the values that were read as a dictionary
+        """
+        self._marked_dets = []
+        wksp = su.getWorkspaceReference(wksp)
+        # assume complete log information is stored in the first entry, it isn't stored in the group workspace itself
+        if isinstance(wksp, WorkspaceGroup):
+            wksp = wksp[0]
+
+        samp = wksp.getRun()
+
+        logvalues = {}
+        logvalues["Rear_Det_Z"] = self._get_const_num(samp, "Rear_Det_Z")
+
+        return logvalues 
+
+    def apply_detector_logs(self, logvalues):
+        # apply the corrections that came from the logs
+        self.REAR_DET_Z = float(logvalues["Rear_Det_Z"])
+        self.corrections_applied = True
+        if len(self._can_logs) > 0:
+            self.check_can_logs(self._can_logs)
+
+    def check_can_logs(self, new_logs):
+        """
+        Tests if applying the corrections from the passed logvalues
+        would give the same result as the corrections that were
+        already made
+        @param new_logs: the new values to check are equivalent
+        @return: True if the are the same False if not
+        """
+        if not self.corrections_applied:
+            # the check needs to wait until there's something to compare against
+            self._can_logs = new_logs
+
+        if len(new_logs) == 0:
+            return False
+
+        existing_values = []
+        existing_values.append(self.REAR_DET_Z)
+
+        new_values = []
+        new_values.append(float(new_logs["Rear_Det_Z"]))
+
+        errors = 0
+        corr_names = ["Rear_Det_Z"]
+        for i in range(0, len(existing_values)):
+            if math.fabs(existing_values[i] - new_values[i]) > 5e-04:
+                sanslog.warning(
+                    "values differ between sample and can runs: Sample "
+                    + corr_names[i]
+                    + " = "
+                    + str(existing_values[i])
+                    + ", can value is "
+                    + str(new_values[i])
+                )
+                errors += 1
+
+                self.append_marked(corr_names[i])
+
+        # the check has been done clear up
+        self._can_logs = {}
+
+        return errors == 0
+
+
+    def elementary_displacement_of_single_component(
+        self, workspace, component_name, coord1, coord2, coord1_scale_factor=1.0, coord2_scale_factor=1.0, relative_displacement=True
+    ):
+        """
+        A simple elementary displacement of a single component.
+        This provides the adequate displacement for finding the beam centre.
+        @param workspace: the workspace which needs to have the move applied to it
+        @param component_name: the name of the component which being displaced
+        @param coord1: the first coordinate, which is x here
+        @param coord2: the second coordinate, which is y here
+        @param coord1_scale_factor: scale factor for the first coordinate
+        @param coord2_scale_factor: scale factor for the second coordinate
+        @param relative_displacement: If the displacement is to be relative (it normally should be)
+        """
+        MoveInstrumentComponent(
+            Workspace=workspace, ComponentName=component_name, X=coord1, Y=coord2, RelativePosition=relative_displacement
+        )       
 
 if __name__ == "__main__":
     pass
